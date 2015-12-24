@@ -1,6 +1,6 @@
-require "rubygems"
-require "bundler"
-Bundler.require(:default, ENV["RACK_ENV"] || :development)
+require 'rubygems'
+require 'bundler'
+Bundler.require(:default, ENV['RACK_ENV'] || :development)
 
 module GitWiki
   class << self
@@ -30,7 +30,7 @@ module GitWiki
 
     def self.find(name)
       page_blob = find_blob(name)
-      raise PageNotFound.new(name) unless page_blob
+      fail PageNotFound.new(name) unless page_blob
       new(page_blob)
     end
 
@@ -42,38 +42,38 @@ module GitWiki
 
     def self.css_class_for(name)
       find(name)
-      "exists"
+      'exists'
     rescue PageNotFound
-      "unknown"
+      'unknown'
     end
 
     def self.repository
-      GitWiki.repository || raise
+      GitWiki.repository || fail
     end
 
     def self.extension
-      GitWiki.extension || raise
+      GitWiki.extension || fail
     end
 
     def self.find_blob(page_name)
       filename = page_name + extension
-      repository.head.target.tree.find {|o| o[:name].eql? filename }
+      repository.head.target.tree.find { |o| o[:name].eql? filename }
     end
     private_class_method :find_blob
 
     def self.create_blob_for(page_name)
-      oid = repo.write("", :blob)
+      oid = repo.write('', :blob)
       index = repo.index
       index.read_tree(repo.head.target.tree)
-      index.add(:path => page_name + extension, :oid => oid, :mode => 0100644)
+      index.add(path: page_name + extension, oid: oid, mode: 0100644)
 
       options = {}
       options[:tree] = index.write_tree(repo)
 
-      options[:author] = { :email => "testuser@github.com", :name => 'Test Author', :time => Time.now }
-      options[:committer] = { :email => "testuser@github.com", :name => 'Test Author', :time => Time.now }
-      options[:message] ||= "Making a commit via Rugged!"
-      options[:parents] = repo.empty? ? [] : [ repo.head.target ].compact
+      options[:author] = { email: 'testuser@github.com', name: 'Test Author', time: Time.now }
+      options[:committer] = { email: 'testuser@github.com', name: 'Test Author', time: Time.now }
+      options[:message] ||= 'Making a commit via Rugged!'
+      options[:parents] = repo.empty? ? [] : [repo.head.target].compact
       options[:update_ref] = 'HEAD'
 
       Rugged::Commit.create(repo, options)
@@ -106,83 +106,85 @@ module GitWiki
 
     def update_content(new_content)
       return if new_content == content
-      File.open(file_name, "w") { |f| f << new_content }
+      File.open(file_name, 'w') { |f| f << new_content }
       add_to_index_and_commit!
     end
 
     private
-      def add_to_index_and_commit!
-        Dir.chdir(self.class.repository.working_dir) {
-          self.class.repository.add(@blob.name)
-        }
-        self.class.repository.commit_index(commit_message)
-      end
 
-      def file_name
-        File.join(self.class.repository.working_dir, name + self.class.extension)
-      end
+    def add_to_index_and_commit!
+      Dir.chdir(self.class.repository.working_dir) {
+        self.class.repository.add(@blob.name)
+      }
+      self.class.repository.commit_index(commit_message)
+    end
 
-      def commit_message
-        new? ? "Created #{name}" : "Updated #{name}"
-      end
+    def file_name
+      File.join(self.class.repository.working_dir, name + self.class.extension)
+    end
 
-      def wiki_link(str)
-        str.gsub(/([A-Z][a-z]+[A-Z][A-Za-z0-9]+)/) { |page|
-          %Q{<a class="#{self.class.css_class_for(page)}"} +
-            %Q{href="/#{page}">#{page}</a>}
-        }
-      end
+    def commit_message
+      new? ? "Created #{name}" : "Updated #{name}"
+    end
+
+    def wiki_link(str)
+      str.gsub(/([A-Z][a-z]+[A-Z][A-Za-z0-9]+)/) { |page|
+        %(<a class="#{self.class.css_class_for(page)}") +
+          %(href="/#{page}">#{page}</a>)
+      }
+    end
   end
 
   class App < Sinatra::Base
     set :app_file, __FILE__
-    set :haml, { :format        => :html5,
-                 :attr_wrapper  => '"'     }
+    set :haml, { format: :html5,
+                 attr_wrapper: '"' }
     enable :inline_templates
 
     error PageNotFound do
-      page = request.env["sinatra.error"].name
+      page = request.env['sinatra.error'].name
       redirect "/#{page}/edit"
     end
 
     before do
-      content_type "text/html", :charset => "utf-8"
+      content_type 'text/html', charset: 'utf-8'
     end
 
-    get "/" do
-      redirect "/" + GitWiki.homepage
+    get '/' do
+      redirect '/' + GitWiki.homepage
     end
 
-    get "/pages" do
+    get '/pages' do
       @pages = Page.find_all
       haml :list
     end
 
-    get "/:page/edit" do
+    get '/:page/edit' do
       @page = Page.find_or_create(params[:page])
       haml :edit
     end
 
-    get "/:page" do
+    get '/:page' do
       @page = Page.find(params[:page])
       haml :show
     end
 
-    post "/:page" do
+    post '/:page' do
       @page = Page.find_or_create(params[:page])
       @page.update_content(params[:body])
       redirect "/#{@page}"
     end
 
     private
-      def title(title=nil)
-        @title = title.to_s unless title.nil?
-        @title
-      end
 
-      def list_item(page)
-        %Q{<a class="page_name" href="/#{page}">#{page.name}</a>}
-      end
+    def title(title = nil)
+      @title = title.to_s unless title.nil?
+      @title
+    end
+
+    def list_item(page)
+      %(<a class="page_name" href="/#{page}">#{page.name}</a>)
+    end
   end
 end
 

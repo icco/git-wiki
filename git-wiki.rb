@@ -1,7 +1,6 @@
-require "sinatra/base"
-require "haml"
-require "grit"
-require "rdiscount"
+require "rubygems"
+require "bundler"
+Bundler.require(:default, ENV["RACK_ENV"] || :development)
 
 module GitWiki
   class << self
@@ -11,7 +10,7 @@ module GitWiki
   def self.new(repository, extension, homepage)
     self.homepage   = homepage
     self.extension  = extension
-    self.repository = Grit::Repo.new(repository)
+    self.repository = Rugged::Repository.new(repository)
 
     App
   end
@@ -26,8 +25,7 @@ module GitWiki
 
   class Page
     def self.find_all
-      return [] if repository.tree.contents.empty?
-      repository.tree.contents.collect { |blob| new(blob) }
+      repository.head.target.tree
     end
 
     def self.find(name)
@@ -58,15 +56,27 @@ module GitWiki
     end
 
     def self.find_blob(page_name)
-      repository.tree/(page_name + extension)
+      filename = page_name + extension
+      repository.head.target.tree.find {|o| o[:name].eql? filename }
     end
     private_class_method :find_blob
 
     def self.create_blob_for(page_name)
-      Grit::Blob.create(repository, {
-        :name => page_name + extension,
-        :data => ""
-      })
+      oid = repo.write("", :blob)
+      index = repo.index
+      index.read_tree(repo.head.target.tree)
+      index.add(:path => page_name + extension, :oid => oid, :mode => 0100644)
+
+      options = {}
+      options[:tree] = index.write_tree(repo)
+
+      options[:author] = { :email => "testuser@github.com", :name => 'Test Author', :time => Time.now }
+      options[:committer] = { :email => "testuser@github.com", :name => 'Test Author', :time => Time.now }
+      options[:message] ||= "Making a commit via Rugged!"
+      options[:parents] = repo.empty? ? [] : [ repo.head.target ].compact
+      options[:update_ref] = 'HEAD'
+
+      Rugged::Commit.create(repo, options)
     end
     private_class_method :create_blob_for
 

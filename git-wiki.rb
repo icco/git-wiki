@@ -31,13 +31,13 @@ module GitWiki
     def self.find(name)
       page_blob = find_blob(name)
       fail PageNotFound.new(name) unless page_blob
-      new(page_blob)
+      new(page_blob, name)
     end
 
     def self.find_or_create(name)
       find(name)
     rescue PageNotFound
-      new(create_blob_for(name))
+      new(commit_blob(name), name)
     end
 
     def self.css_class_for(name)
@@ -57,31 +57,34 @@ module GitWiki
 
     def self.find_blob(page_name)
       filename = page_name + extension
-      repository.head.target.tree.find { |o| o[:name].eql? filename }
+      o = repository.head.target.tree.find { |o| o[:name].eql? filename }
+      return o.nil? ? nil : o[:oid]
     end
     private_class_method :find_blob
 
-    def self.create_blob_for(page_name)
-      oid = repo.write('', :blob)
-      index = repo.index
-      index.read_tree(repo.head.target.tree)
+    def self.commit_blob(page_name, content = '')
+      oid = repository.write(content, :blob)
+      index = repository.index
+      index.read_tree(repository.head.target.tree)
       index.add(path: page_name + extension, oid: oid, mode: 0100644)
 
       options = {}
-      options[:tree] = index.write_tree(repo)
+      options[:tree] = index.write_tree(repository)
 
       options[:author] = { email: 'testuser@github.com', name: 'Test Author', time: Time.now }
       options[:committer] = { email: 'testuser@github.com', name: 'Test Author', time: Time.now }
       options[:message] ||= 'Making a commit via Rugged!'
-      options[:parents] = repo.empty? ? [] : [repo.head.target].compact
+      options[:parents] = repository.empty? ? [] : [repository.head.target].compact
       options[:update_ref] = 'HEAD'
 
-      Rugged::Commit.create(repo, options)
-    end
-    private_class_method :create_blob_for
+      Rugged::Commit.create(repository, options)
 
-    def initialize(blob)
-      @blob = blob
+      return oid
+    end
+
+    def initialize(blob, name)
+      @name = name
+      @blob = Page.repository.lookup(blob)
     end
 
     def to_html
@@ -97,30 +100,22 @@ module GitWiki
     end
 
     def name
-      @blob.name.gsub(/#{File.extname(@blob.name)}$/, '')
+      @name.gsub(/#{File.extname(@name)}$/, '')
     end
 
     def content
-      @blob.data
+      @blob.content
     end
 
     def update_content(new_content)
       return if new_content == content
-      File.open(file_name, 'w') { |f| f << new_content }
-      add_to_index_and_commit!
+      Page.commit_blob(@name, new_content)
     end
 
     private
 
-    def add_to_index_and_commit!
-      Dir.chdir(self.class.repository.working_dir) {
-        self.class.repository.add(@blob.name)
-      }
-      self.class.repository.commit_index(commit_message)
-    end
-
     def file_name
-      File.join(self.class.repository.working_dir, name + self.class.extension)
+      File.join(self.class.repository.workdir, name + self.class.extension)
     end
 
     def commit_message

@@ -25,7 +25,7 @@ module GitWiki
 
   class Page
     def self.find_all
-      repository.head.target.tree
+      repository.head.target.tree.to_a.map {|e| new(e[:oid], e[:name]) }
     end
 
     def self.find(name)
@@ -38,13 +38,6 @@ module GitWiki
       find(name)
     rescue PageNotFound
       new(commit_blob(name), name)
-    end
-
-    def self.css_class_for(name)
-      find(name)
-      'exists'
-    rescue PageNotFound
-      'unknown'
     end
 
     def self.repository
@@ -123,10 +116,7 @@ module GitWiki
     end
 
     def wiki_link(str)
-      str.gsub(/([A-Z][a-z]+[A-Z][A-Za-z0-9]+)/) { |page|
-        %(<a class="#{self.class.css_class_for(page)}") +
-          %(href="/#{page}">#{page}</a>)
-      }
+      str.gsub(/([A-Z][a-z]+[A-Z][A-Za-z0-9]+)/) { |page| %(<a href="/#{page}">#{page}</a>) }
     end
   end
 
